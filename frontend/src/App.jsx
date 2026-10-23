@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/forecast'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/forecast'
 
 const navItems = [
   ['overview', 'Overview', '⌂'],
@@ -55,8 +55,8 @@ function App() {
     <div className="app-shell bg-slate-50 dark:bg-slate-900">
       <aside className="sidebar dark:bg-slate-800">
         <div className="brand">
-          <div className="brand-mark"><span>G</span></div>
-          <div><strong>GridBricks</strong><small>Energy intelligence</small></div>
+          <div className="brand-mark"><span>W</span></div>
+          <div><strong>WindLens</strong><small>Energy intelligence</small></div>
         </div>
         <div className="workspace-label">WORKSPACE</div>
         <div className="workspace-select"><span className="status-dot" /> UK power trading <span className="chevron">⌄</span></div>

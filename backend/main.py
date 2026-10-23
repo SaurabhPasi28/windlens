@@ -1,23 +1,44 @@
 import asyncio
 from datetime import date, datetime, time, timedelta, timezone
 import math
+import os
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="GridBricks Energy Forecast API", version="1.0.0")
+APP_NAME = os.getenv("APP_NAME", "WindLens Energy Forecast API")
+APP_DESCRIPTION = os.getenv(
+    "APP_DESCRIPTION",
+    "A wind generation forecasting and accuracy analytics platform using Elexon data to support UK day-ahead electricity procurement decisions.",
+)
+BMRS_BASE_URL = os.getenv(
+    "BMRS_BASE_URL", "https://data.elexon.co.uk/bmrs/api/v1/datasets"
+).rstrip("/")
+DEFAULT_DELIVERY_DATE = date.fromisoformat(
+    os.getenv("DEFAULT_DELIVERY_DATE", "2026-01-15")
+)
+ENABLE_DEMO_FALLBACK = os.getenv("ENABLE_DEMO_FALLBACK", "true").lower() == "true"
+
+
+def get_cors_origins() -> list[str]:
+    configured_origins = os.getenv(
+        "CORS_ORIGINS", "http://localhost:5173,http://localhost:4173"
+    )
+    return [origin.strip() for origin in configured_origins.split(",") if origin.strip()]
+
+
+app = FastAPI(title=APP_NAME, description=APP_DESCRIPTION, version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:4173"],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-BMRS_BASE_URL = "https://data.elexon.co.uk/bmrs/api/v1/datasets"
 ACTUAL_DATASET = "FUELHH"
 FORECAST_DATASET = "WINDFOR"
 DECISION_HOUR_UTC = 16
@@ -25,12 +46,12 @@ DECISION_HOUR_UTC = 16
 
 @app.get("/")
 def home() -> dict[str, str]:
-    return {"message": "GridBricks Energy Forecast API is running"}
+    return {"message": "WindLens Energy Forecast API is running"}
 
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "gridbricks-api"}
+    return {"status": "ok", "service": "windlens-api"}
 
 
 def parse_datetime(value: Any) -> datetime | None:
@@ -137,7 +158,7 @@ def combine_data(target: date, actuals: dict[str, float], forecasts: dict[str, f
 async def forecast(
     delivery_date: date | None = None,
 ) -> dict[str, Any]:
-    target = delivery_date or date(2026, 1, 15)
+    target = delivery_date or DEFAULT_DELIVERY_DATE
     if target.year != 2026 or target.month != 1:
         raise HTTPException(status_code=400, detail="This pilot is limited to January 2026.")
 
@@ -150,6 +171,8 @@ async def forecast(
         if not points:
             raise ValueError("BMRS returned no matching WIND rows")
     except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        if not ENABLE_DEMO_FALLBACK:
+            raise HTTPException(status_code=502, detail="Elexon BMRS data is unavailable.")
         points = build_demo_forecast(target)
         source = "Elexon BMRS-shaped fallback"
 

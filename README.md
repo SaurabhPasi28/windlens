@@ -1,41 +1,55 @@
-# GridBricks Energy Intelligence
+# WindLens
 
-GridBricks is a React + FastAPI pilot dashboard for UK day-ahead wind generation decisions. It focuses on the January 2026 scope from the GridBricks full-stack challenge.
+> A wind generation forecasting and accuracy analytics platform using Elexon data to support UK day-ahead electricity procurement decisions.
 
-## What the product does
+WindLens is a React/Vite dashboard backed by a FastAPI service. It compares Elexon BMRS `WINDFOR` day-ahead forecasts with `FUELHH` actual wind generation and reports MAE, RMSE, bias, and an accuracy score.
 
-- Shows the latest wind forecast available by the day-ahead decision cutoff.
-- Compares Elexon BMRS `WINDFOR` forecasts with `FUELHH` actual wind generation.
-- Reports MAE, RMSE, bias, and a readable accuracy score.
-- Provides an explorer table for half-hourly delivery intervals.
-- Includes a responsive UI and Tailwind class-based dark mode.
+## Architecture
 
-The backend selects the most recent `publishTime` at or before 16:00 UTC on the day before delivery. The application is limited deliberately to January 2026, as required by the brief.
+- **Frontend:** React 19, Vite, Tailwind CSS; deployable to Vercel.
+- **Backend:** FastAPI and httpx; deployable as a Docker service on Render.
+- **Data:** Elexon BMRS `FUELHH` and `WINDFOR` datasets.
+- **Scope:** The pilot is intentionally limited to January 2026.
 
-## Project structure
+## Environment variables
 
-```text
-backend/
-  main.py              FastAPI API, BMRS ingestion, selection, metrics
-  requirements.txt     Python dependencies
-frontend/
-  src/App.jsx          Dashboard views and API integration
-  src/App.css          Product layout and theme styles
-  src/index.css        Tailwind import and dark variant
-  vite.config.js       Vite + Tailwind configuration
-Dockerfile             Multi-stage frontend image
-docker-compose.yml     Frontend and backend local orchestration
-```
+### Backend
+
+Copy [`backend/.env.example`](backend/.env.example) to `backend/.env` for local development:
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `APP_NAME` | No | FastAPI application name. |
+| `APP_DESCRIPTION` | No | API description and product description. |
+| `BMRS_BASE_URL` | No | Elexon BMRS datasets API base URL. |
+| `DEFAULT_DELIVERY_DATE` | No | Date used when `/api/forecast` has no query parameter. |
+| `ENABLE_DEMO_FALLBACK` | No | Set to `true` to use deterministic demo data when BMRS is unavailable. |
+| `CORS_ORIGINS` | Yes in production | Comma-separated frontend origins, for example `https://windlens.vercel.app`. |
+
+Do not commit `.env` files. The committed example contains only non-secret defaults.
+
+### Frontend
+
+Copy [`frontend/.env.example`](frontend/.env.example) to `frontend/.env`:
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `VITE_API_URL` | Yes in production | Full backend forecast endpoint, for example `https://windlens-api.onrender.com/api/forecast`. |
+
+Vite embeds `VITE_*` values into the browser bundle, so never put secrets in frontend environment variables.
 
 ## Run locally
 
 ### Without Docker
+
+Backend:
 
 ```powershell
 cd backend
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
+Copy-Item .env.example .env
 uvicorn main:app --reload --port 8000
 ```
 
@@ -44,63 +58,69 @@ In another terminal:
 ```powershell
 cd frontend
 npm install
+Copy-Item .env.example .env
 npm run dev
 ```
 
-Open `http://localhost:5173`. For a hosted frontend, copy `frontend/.env.example` to the deployment environment and set `VITE_API_URL` to the hosted FastAPI URL.
+Open `http://localhost:5173`. API documentation is available at `http://localhost:8000/docs`.
 
-### With Docker
+### With Docker Compose
 
-Run the commands from the **project root** (`E:\Revision\GridBricks`), the folder containing `docker-compose.yml`:
+From the repository root:
 
 ```powershell
-cd E:\Revision\GridBricks
 docker compose up --build
 ```
 
-Open `http://localhost:4173`. The API is available at `http://localhost:8000/docs`.
+Open `http://localhost:4173`; the API is at `http://localhost:8000/docs`.
 
-Stop the containers with `Ctrl+C`, or from the project root run:
+## Deploy the backend to Render
 
-```powershell
-docker compose down
-```
+1. Push this repository to GitHub.
+2. In Render, choose **New > Blueprint** and select the repository. Render will read [`render.yaml`](render.yaml).
+3. Set `CORS_ORIGINS` to the final Vercel URL, such as `https://windlens.vercel.app`. Include comma-separated preview/custom domains only when needed.
+4. Deploy the `windlens-api` service.
+5. Verify `https://<render-service>.onrender.com/api/health` returns `{"status":"ok","service":"windlens-api"}`.
+6. Copy the Render service URL for the Vercel setup below.
 
-### What Docker is doing here
+The included [`backend/Dockerfile`](backend/Dockerfile) binds Uvicorn to `0.0.0.0:8000`, which is suitable for Render's Docker runtime. For a non-Docker Render service, use `pip install -r requirements.txt` as the build command and `uvicorn main:app --host 0.0.0.0 --port $PORT` as the start command.
 
-Docker packages an application together with its runtime and dependencies into an isolated, repeatable container. This avoids the classic “works on my machine” problem.
+## Deploy the frontend to Vercel
 
-This project has two containers:
+1. In Vercel, choose **Add New > Project** and import this repository.
+2. Set **Root Directory** to `frontend`.
+3. Keep the framework as **Vite**. Use `npm run build` and `dist` if Vercel does not detect them automatically.
+4. Add the production environment variable:
 
-- **backend**: builds from `backend/Dockerfile`, installs Python/FastAPI dependencies, and serves the API on port `8000`.
-- **frontend**: builds the Vite app from `frontend/Dockerfile`, then serves the production `dist` files on port `4173`.
+   ```text
+   VITE_API_URL=https://<render-service>.onrender.com/api/forecast
+   ```
 
-`docker-compose.yml` starts both containers as one local application. `--build` is useful after changing source code or dependency files; without it, Docker may reuse an older image.
+5. Deploy or redeploy the project.
+6. Add the final Vercel deployment URL to Render's `CORS_ORIGINS` and redeploy the backend if the URL changed.
 
-In general:
-
-- An **image** is the packaged blueprint.
-- A **container** is a running instance of an image.
-- A **Dockerfile** describes how to build an image.
-- Docker Compose describes how multiple containers connect and run together.
-- A **volume** persists data outside a container; this stateless dashboard does not need one.
+[`frontend/vercel.json`](frontend/vercel.json) includes the SPA rewrite required for client-side navigation and direct page refreshes.
 
 ## API
 
 ```text
-GET /api/forecast?delivery_date=2026-01-15
 GET /api/health
+GET /api/forecast?delivery_date=2026-01-15
 ```
 
-The service uses the official Elexon BMRS datasets:
+When `ENABLE_DEMO_FALLBACK=true`, the API returns clearly labelled deterministic BMRS-shaped data if Elexon is unavailable or returns no matching rows. Set it to `false` in production when a failed upstream request must be surfaced instead.
 
-- `FUELHH` for actual generation, filtered to `fuelType=WIND`
-- `WINDFOR` for forecasts, filtered by `startTime` and `publishTime`
+## Project structure
 
-If BMRS is unavailable, a clearly-labelled deterministic BMRS-shaped fallback keeps the demo usable. It is not presented as live market data.
-
-## AI and delivery notes
-
-AI tools were used to accelerate UI scaffolding, implementation, and review. Domain rules and the forecast selection logic are documented in the backend source and this README.
-
-The frontend includes `frontend/vercel.json` for a Vercel deployment. The FastAPI service can be deployed with the included backend Dockerfile to a container host, then supplied as `VITE_API_URL`. A public GitHub URL, hosted URL, and unlisted demo-video URL should be added to this section after deployment; they cannot be created from this local workspace without the owner's accounts and credentials.
+```text
+backend/
+  main.py              FastAPI API, BMRS ingestion, selection, metrics
+  Dockerfile           Render-compatible container
+  .env.example         Backend configuration template
+frontend/
+  src/App.jsx          Dashboard and API integration
+  Dockerfile           Production static asset container
+  vercel.json          Vercel build and SPA routing configuration
+render.yaml            Render Blueprint
+docker-compose.yml     Local orchestration
+```

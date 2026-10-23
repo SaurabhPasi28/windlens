@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: windlens-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_NAME
+        value: WindLens Energy Forecast API
+      - key: APP_DESCRIPTION
+        value: A wind generation forecasting and accuracy analytics platform using Elexon data to support UK day-ahead electricity procurement decisions.
+      - key: BMRS_BASE_URL
+        value: https://data.elexon.co.uk/bmrs/api/v1/datasets
+      - key: DEFAULT_DELIVERY_DATE
+        value: "2026-01-15"
+      - key: ENABLE_DEMO_FALLBACK
+        value: "true"
+      - key: CORS_ORIGINS
+        sync: false
